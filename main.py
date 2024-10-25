@@ -128,6 +128,7 @@ async def generate_response(prompt_request: PromptRequest):
         #(OLD VER)full_prompt = f"{SYSTEM_PROMPT}\n\nUser: {prompt_request.user_prompt}\nBot:"
         #print(full_prompt)
         #
+        print(count_tokens(full_prompt))
         # Generate the response using llama.cpp model with appropriate parameters
         Response = llama_model(
             prompt=full_prompt,
