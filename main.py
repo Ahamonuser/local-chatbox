@@ -1,3 +1,5 @@
+import os
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -6,6 +8,10 @@ from typing import List, Optional
 from sqlalchemy import create_engine, Column, Integer, String, Text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from llama_cpp import Llama
+from llama_cpp import LlamaTokenizer
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Define the FastAPI app
 app = FastAPI()
@@ -27,16 +33,25 @@ class Chatbox(Base):
 # Create the table if it doesn't exist
 Base.metadata.create_all(bind=engine)
 
+MODEL_PATH = os.getenv('MODEL_PATH')
+
 # Initialize llama.cpp model
-llama_model = Llama(model_path="D:/Llama_local/llama.cpp/models/Llama-3.2-1B-Instruct-Q6_K.gguf")
+llama_model = Llama(model_path=MODEL_PATH)
+#llama_model = Llama(model_path="D:/Llama_local/llama.cpp/models/Llama-3.2-1B-Instruct-Q6_K.gguf")
 #D:/Llama_local/llama.cpp/models/gemma-1.1-7b-it.Q4_K_M.gguf
 #    
+
+# Initialize the tokenizer
+tokenizer = LlamaTokenizer(llama_model)
 
 # Define model role
 MODEL_ROLE = "You are Meta AI, a friendly AI Assistant. Today's date is Friday, October 25, 2024. Your responses should be helpful, informative, and keeping it concise. You can perform various tasks such as: answering questions, translation, summarization. You are not capable of: making phone calls, sending emails, or accessing personal information, user data, real-time information or current events You should aim to convey a friendly, helpful, and informative tone in your responses. Be approachable, engaging, and professional. Your responses should be limited to 200 tokens. You can end the conversation by typing 'End'."
 
 # Define system prompt
-SYSTEM_PROMPT = f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{MODEL_ROLE}<|eot_id|>"
+# Remove <|begin_of_text|>
+# RuntimeWarning: Detected duplicate leading "<|begin_of_text|>" in prompt, this will likely reduce response quality, consider removing it...
+#  warnings.warn(
+SYSTEM_PROMPT = f"<|start_header_id|>system<|end_header_id|>\n\n{MODEL_ROLE}<|eot_id|>"
 
 # Define request and response Models
 class PromptRequest(BaseModel):
@@ -79,22 +94,19 @@ def get_conversation_context(db_session, session_id: str) -> List[str]:
     #
     return [f"<|start_header_id|>user<|end_header_id|>\n\n{chat.user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n{chat.response}<|eot_id|>" for chat in chatbox]
 
-# Helper function to count tokens in a text.
-def count_tokens(text: str) -> int:
-    return len(text.split())
-
 # Helper function to truncate the context to fit so that the total number of tokens (system prompt + context + user prompt) does not exceed the max_tokens limit.
 def truncate_context(system_prompt: str, user_prompt: str, context: List[str], max_tokens: int) -> List[str]:
     # Calculate the total tokens in the full prompt
     full_prompt = f"{system_prompt}{context}{user_prompt}"
-    total_tokens = count_tokens(full_prompt)
+    token_count = len(tokenizer.encode(full_prompt, False))
+    #print(token_count)
     
     # If the total tokens exceed the max, start removing older context
-    while total_tokens > max_tokens:
+    while token_count > max_tokens:
         # Remove the oldest element of the list (context)
         context.pop(0)
         full_prompt = f"{system_prompt}{context}{user_prompt}"
-        total_tokens = count_tokens(full_prompt)
+        token_count = len(tokenizer.encode(full_prompt, False))
     
     return context
 
@@ -108,9 +120,9 @@ async def generate_response(prompt_request: PromptRequest):
         
         # Retrieve previous context (if any in List[str]) for the session
         context = get_conversation_context(db_session, prompt_request.session_id)
-        
+    
         # Truncate the context to ensure it fits within the token limit
-        context = truncate_context(SYSTEM_PROMPT, USER_PROMPT, context, 300)
+        context = truncate_context(SYSTEM_PROMPT, USER_PROMPT, context, 512)
         
         # Combine system prompt with user 
         full_prompt = f"{SYSTEM_PROMPT}{context}{USER_PROMPT}"
@@ -128,11 +140,11 @@ async def generate_response(prompt_request: PromptRequest):
         #(OLD VER)full_prompt = f"{SYSTEM_PROMPT}\n\nUser: {prompt_request.user_prompt}\nBot:"
         #print(full_prompt)
         #
-        print(count_tokens(full_prompt))
+        print(len(tokenizer.encode(full_prompt, False)))
         # Generate the response using llama.cpp model with appropriate parameters
         Response = llama_model(
             prompt=full_prompt,
-            max_tokens=200,       # The number of tokens to generate in the response, -1 for unlimited
+            max_tokens=64,       # The number of tokens to generate in the response, -1 for unlimited
             temperature=0.4,      # The temperature for randomness, lower values are more deterministic
             top_p=0.5            # The nucleus sampling probability
         )
