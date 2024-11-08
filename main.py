@@ -1,4 +1,5 @@
 import os
+from summerize import summerize_user_prompt
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -45,7 +46,7 @@ llama_model = Llama(model_path=MODEL_PATH)
 tokenizer = LlamaTokenizer(llama_model)
 
 # Define model role
-MODEL_ROLE = "You are Meta AI, a friendly AI Assistant. Today's date is Friday, October 25, 2024. Your responses should be helpful, informative, and keeping it concise. You can perform various tasks such as: answering questions, translation, summarization. You are not capable of: making phone calls, sending emails, or accessing personal information, user data, real-time information or current events You should aim to convey a friendly, helpful, and informative tone in your responses. Be approachable, engaging, and professional. Your responses should be limited to 200 tokens. You can end the conversation by typing 'End'."
+MODEL_ROLE = "You are Meta AI, a friendly AI Assistant. Your responses must be helpful, informative, and keeping it concise. You can perform various tasks such as: answering questions, translation, summarization. You are incapable of: making phone calls, sending emails, or accessing personal information, user data, real-time information or current events You must aim to convey a friendly, helpful, and informative tone in your responses. Be approachable, engaging, and professional. Make sure to keep the answer less than 40 words and 2 sentences.."
 
 # Define system prompt
 # Remove <|begin_of_text|>
@@ -66,7 +67,11 @@ class BotResponse(BaseModel):
 
 # Helper function to retrieve context from the database
 def get_conversation_context(db_session, session_id: str) -> List[str]:
-    chatbox = db_session.query(Chatbox).filter(Chatbox.session_id == session_id).all()
+    chatbox = db_session.query(Chatbox).filter(Chatbox.session_id == session_id).order_by(desc(Chatbox.id)).limit(5).all()
+    #order_by(desc(Chatbox.id)): get the rows in descending order of id (the latest row is the last one)
+    #limit(5): get 5 rows
+    #reversed(chatbox): reverse the order of the rows (ensere the chronological order)
+    #chatbox = db_session.query(Chatbox).filter(Chatbox.session_id == session_id).all()
     # Inside of the context, we have:
     #<|start_header_id|>user<|end_header_id|>
     #
@@ -92,7 +97,7 @@ def get_conversation_context(db_session, session_id: str) -> List[str]:
     # for chat in chatbox: (get user_prompt and response at every column in the 'chatbox' table - stored in the database)
     #      CONTEXT_PROMPT += f"<|start_header_id|>user<|end_header_id|>\n\n{chat.user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n{chat.response}<|eot_id|>"
     #
-    return [f"<|start_header_id|>user<|end_header_id|>\n\n{chat.user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n{chat.response}<|eot_id|>" for chat in chatbox]
+    return [f"<|start_header_id|>user<|end_header_id|>\n\n{chat.user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n{chat.response}<|eot_id|>" for chat in reversed(chatbox)]
 
 # Helper function to truncate the context to fit so that the total number of tokens (system prompt + context + user prompt) does not exceed the max_tokens limit.
 def truncate_context(system_prompt: str, user_prompt: str, context: List[str], max_tokens: int) -> List[str]:
@@ -120,12 +125,23 @@ async def generate_response(prompt_request: PromptRequest):
         
         # Retrieve previous context (if any in List[str]) for the session
         context = get_conversation_context(db_session, prompt_request.session_id)
-    
+        print("Pre User token: ", len(tokenizer.encode(USER_PROMPT, False)))
+        
+        # Summerize the user prompt if it is too long
+        if len(tokenizer.encode(f"{USER_PROMPT}", False)) > 64:
+            prompt_request.user_prompt = summerize_user_prompt(prompt_request.user_prompt)
+            NEW_USER_PROMPT = f"<|start_header_id|>user<|end_header_id|>\n\n{prompt_request.user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
+            print("Post User token: ", len(tokenizer.encode(NEW_USER_PROMPT, False)))
+            print("Context token: ", len(tokenizer.encode(f"{context}", False)))
+            print("system token: ", len(tokenizer.encode(SYSTEM_PROMPT, False)))
+            print("Tokens: ", len(tokenizer.encode(f"{SYSTEM_PROMPT}{context}{NEW_USER_PROMPT}", False)))
+        
+        print("User Prompt: ", prompt_request.user_prompt)
         # Truncate the context to ensure it fits within the token limit
-        context = truncate_context(SYSTEM_PROMPT, USER_PROMPT, context, 512)
+        #context = truncate_context(SYSTEM_PROMPT, USER_PROMPT, context, 512)
         
         # Combine system prompt with user 
-        full_prompt = f"{SYSTEM_PROMPT}{context}{USER_PROMPT}"
+        full_prompt = f"{SYSTEM_PROMPT}{context}{NEW_USER_PROMPT}"
         #
         #<|begin_of_text|><|start_header_id|>system<|end_header_id|>
         #
@@ -138,14 +154,15 @@ async def generate_response(prompt_request: PromptRequest):
         #
         #(OLD VER)full_prompt = f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{SYSTEM_PROMPT}<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n{prompt_request.user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
         #(OLD VER)full_prompt = f"{SYSTEM_PROMPT}\n\nUser: {prompt_request.user_prompt}\nBot:"
-        #print(full_prompt)
+        print("Full prompt: ", full_prompt)
         #
-        print(len(tokenizer.encode(full_prompt, False)))
+        print("Tokens: ", len(tokenizer.encode(full_prompt, False)))
+
         # Generate the response using llama.cpp model with appropriate parameters
         Response = llama_model(
             prompt=full_prompt,
-            max_tokens=64,       # The number of tokens to generate in the response, -1 for unlimited
-            temperature=0.4,      # The temperature for randomness, lower values are more deterministic
+            max_tokens=32,       # The number of tokens to generate in the response, -1 for unlimited
+            temperature=0.5,      # The temperature for randomness, lower values are more deterministic
             top_p=0.5            # The nucleus sampling probability
         )
 
