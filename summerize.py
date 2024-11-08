@@ -1,7 +1,12 @@
+import os
+from dotenv import load_dotenv
 from langchain_community.chat_models import ChatLlamaCpp
 from langchain_core.prompts import ChatPromptTemplate
 
-summerize_model = "D:/Llama_local/llama.cpp/models/Hermes-2-Pro-Llama-3-8B-Q6_K.gguf"
+# Load environment variables from .env file
+load_dotenv()
+
+SUMMARIZE_MODEL = os.getenv('SUMMARIZE_MODEL_PATH')
 
 summerize_prompt = ChatPromptTemplate.from_messages(
     [
@@ -15,7 +20,7 @@ summerize_prompt = ChatPromptTemplate.from_messages(
 def summerize_user_prompt(user_prompt: str) -> str:
     # Get the summary of the user prompt
     llm=ChatLlamaCpp(
-        model_path=summerize_model,
+        model_path=SUMMARIZE_MODEL,
         temperature=0,
         stop=["\n", "."],
         top_p=0.5)
@@ -23,5 +28,3 @@ def summerize_user_prompt(user_prompt: str) -> str:
     summary = chain.invoke(input={"input_text": user_prompt}).content
     print("Summary: ", summary)
     return summary
-
-
