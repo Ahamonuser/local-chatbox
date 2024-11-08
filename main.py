@@ -1,5 +1,5 @@
 import os
-from summerize import summerize_user_prompt
+from summarize import summerize_user_prompt
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
