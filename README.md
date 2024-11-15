@@ -156,3 +156,7 @@ Ngoài ra có thể phiên dịch sang ngôn ngữ khác bằng cách chỉ đ�
 
 ![Dockerhub-Push-Suc](./README-assets/Dockerhub-Push-Success.png)
 
+## VI. Flowchart
+
+<div style="text-align:center"><img src="./README-assets/flowchart.png"/></div>
+
