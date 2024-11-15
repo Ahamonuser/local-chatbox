@@ -6,7 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Optional
-from sqlalchemy import create_engine, Column, Integer, String, Text
+from sqlalchemy import create_engine, Column, Integer, String, Text, desc
 from sqlalchemy.orm import sessionmaker, declarative_base
 from llama_cpp import Llama
 from llama_cpp import LlamaTokenizer
@@ -34,13 +34,9 @@ class Chatbox(Base):
 # Create the table if it doesn't exist
 Base.metadata.create_all(bind=engine)
 
-MODEL_PATH = os.getenv('MODEL_PATH')
-
 # Initialize llama.cpp model
-llama_model = Llama(model_path=MODEL_PATH)
-#llama_model = Llama(model_path="D:/Llama_local/llama.cpp/models/Llama-3.2-1B-Instruct-Q6_K.gguf")
-#D:/Llama_local/llama.cpp/models/gemma-1.1-7b-it.Q4_K_M.gguf
-#    
+chat_model_path = os.getenv("MODEL_PATH")
+llama_model = Llama(model_path=chat_model_path)
 
 # Initialize the tokenizer
 tokenizer = LlamaTokenizer(llama_model)
@@ -51,7 +47,7 @@ MODEL_ROLE = "You are Meta AI, a friendly AI Assistant. Your responses must be h
 # Define system prompt
 # Remove <|begin_of_text|>
 # RuntimeWarning: Detected duplicate leading "<|begin_of_text|>" in prompt, this will likely reduce response quality, consider removing it...
-#  warnings.warn(
+# warnings.warn(
 SYSTEM_PROMPT = f"<|start_header_id|>system<|end_header_id|>\n\n{MODEL_ROLE}<|eot_id|>"
 
 # Define request and response Models
@@ -65,6 +61,10 @@ class BotResponse(BaseModel):
     response: str
     context: Optional[List[str]] = None
 
+class BotSummary(BaseModel):
+    user_input: str
+    summary: str
+    
 # Helper function to retrieve context from the database
 def get_conversation_context(db_session, session_id: str) -> List[str]:
     chatbox = db_session.query(Chatbox).filter(Chatbox.session_id == session_id).order_by(desc(Chatbox.id)).limit(5).all()
@@ -99,21 +99,18 @@ def get_conversation_context(db_session, session_id: str) -> List[str]:
     #
     return [f"<|start_header_id|>user<|end_header_id|>\n\n{chat.user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n{chat.response}<|eot_id|>" for chat in reversed(chatbox)]
 
-# Helper function to truncate the context to fit so that the total number of tokens (system prompt + context + user prompt) does not exceed the max_tokens limit.
-def truncate_context(system_prompt: str, user_prompt: str, context: List[str], max_tokens: int) -> List[str]:
-    # Calculate the total tokens in the full prompt
-    full_prompt = f"{system_prompt}{context}{user_prompt}"
-    token_count = len(tokenizer.encode(full_prompt, False))
-    #print(token_count)
+@app.post("/summarize", response_model=BotSummary)
+async def summarize_text(prompt_request: PromptRequest):
+    try:
+        summary = summerize_user_prompt(prompt_request.user_prompt)
+        return BotSummary(
+            user_input=prompt_request.user_prompt,
+            summary=summary
+        )
     
-    # If the total tokens exceed the max, start removing older context
-    while token_count > max_tokens:
-        # Remove the oldest element of the list (context)
-        context.pop(0)
-        full_prompt = f"{system_prompt}{context}{user_prompt}"
-        token_count = len(tokenizer.encode(full_prompt, False))
-    
-    return context
+    except Exception as e:
+        # General exception handling for unexpected errors
+        raise HTTPException(status_code=500, detail=str(e))
 
 # POST method to generate a response from the model
 @app.post("/generate-response", response_model=BotResponse)
@@ -125,23 +122,17 @@ async def generate_response(prompt_request: PromptRequest):
         
         # Retrieve previous context (if any in List[str]) for the session
         context = get_conversation_context(db_session, prompt_request.session_id)
-        print("Pre User token: ", len(tokenizer.encode(USER_PROMPT, False)))
         
         # Summerize the user prompt if it is too long
         if len(tokenizer.encode(f"{USER_PROMPT}", False)) > 64:
             prompt_request.user_prompt = summerize_user_prompt(prompt_request.user_prompt)
             NEW_USER_PROMPT = f"<|start_header_id|>user<|end_header_id|>\n\n{prompt_request.user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
-            print("Post User token: ", len(tokenizer.encode(NEW_USER_PROMPT, False)))
-            print("Context token: ", len(tokenizer.encode(f"{context}", False)))
-            print("system token: ", len(tokenizer.encode(SYSTEM_PROMPT, False)))
-            print("Tokens: ", len(tokenizer.encode(f"{SYSTEM_PROMPT}{context}{NEW_USER_PROMPT}", False)))
-        
-        print("User Prompt: ", prompt_request.user_prompt)
-        # Truncate the context to ensure it fits within the token limit
-        #context = truncate_context(SYSTEM_PROMPT, USER_PROMPT, context, 512)
+            full_prompt = f"{SYSTEM_PROMPT}{context}{NEW_USER_PROMPT}"
+        else:
+            full_prompt = f"{SYSTEM_PROMPT}{context}{USER_PROMPT}"
         
         # Combine system prompt with user 
-        full_prompt = f"{SYSTEM_PROMPT}{context}{NEW_USER_PROMPT}"
+        #full_prompt = f"{SYSTEM_PROMPT}{context}{NEW_USER_PROMPT}"
         #
         #<|begin_of_text|><|start_header_id|>system<|end_header_id|>
         #
@@ -151,13 +142,7 @@ async def generate_response(prompt_request: PromptRequest):
         #
         #AKA:
         #full_prompt = f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{SYSTEM_PROMPT}<|eot_id|>{context}<|start_header_id|>user<|end_header_id|>\n\n{prompt_request.user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
-        #
-        #(OLD VER)full_prompt = f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{SYSTEM_PROMPT}<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n{prompt_request.user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
-        #(OLD VER)full_prompt = f"{SYSTEM_PROMPT}\n\nUser: {prompt_request.user_prompt}\nBot:"
-        print("Full prompt: ", full_prompt)
-        #
-        print("Tokens: ", len(tokenizer.encode(full_prompt, False)))
-
+        
         # Generate the response using llama.cpp model with appropriate parameters
         Response = llama_model(
             prompt=full_prompt,
@@ -165,7 +150,7 @@ async def generate_response(prompt_request: PromptRequest):
             temperature=0.5,      # The temperature for randomness, lower values are more deterministic
             top_p=0.5            # The nucleus sampling probability
         )
-
+        
         # Extract the generated response
         bot_answer = Response["choices"][0]["text"].strip()
         
@@ -208,6 +193,7 @@ def get_conversation_history(session_id: str):
             )
             for chat in chatbox
         ]
+    
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
