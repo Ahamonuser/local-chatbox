@@ -2,7 +2,7 @@
 
 ## I. Model sử dụng
 
-[Llama-3.2-1B-Instruct](https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/blob/main/Llama-3.2-1B-Instruct-Q6_K.gguf)
+[Meta-Llama-3.1-8B-Instruct-Q6_K_L](https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/blob/main/Meta-Llama-3.1-8B-Instruct-Q6_K_L.gguf)
 
 ## II. Postman API
 
