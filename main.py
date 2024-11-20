@@ -167,7 +167,7 @@ async def generate_response(prompt_request: PromptRequest):
         bot_answer = Response["choices"][0]["text"].strip()
         
         # Summarize the response if it is too long
-        if len(tokenizer.encode(f"{bot_answer}", False)) > 64:
+        if len(tokenizer.encode(f"{bot_answer}", False)) > 32:
             summarized_bot_answer = summarize(bot_answer, "output")
             
             # Save the conversation in the database
