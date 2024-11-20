@@ -1,5 +1,5 @@
 import os
-from summarize import summerize_user_prompt
+from summarize import summarize
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -30,6 +30,7 @@ class Chatbox(Base):
     session_id = Column(String, index=True)
     user_prompt = Column(Text, nullable=False)
     response = Column(Text, nullable=False)
+    summarized_response = Column(Text, nullable=True)
 
 # Create the table if it doesn't exist
 Base.metadata.create_all(bind=engine)
@@ -59,12 +60,17 @@ class BotResponse(BaseModel):
     session_id: str
     user_prompt: str
     response: str
+    summarized_response: Optional[str] = None
     context: Optional[List[str]] = None
 
 class BotSummary(BaseModel):
-    user_input: str
+    request: str
     summary: str
     
+class SummaryRequest(BaseModel):
+    mode: str
+    user_prompt: str
+
 # Helper function to retrieve context from the database
 def get_conversation_context(db_session, session_id: str) -> List[str]:
     chatbox = db_session.query(Chatbox).filter(Chatbox.session_id == session_id).order_by(desc(Chatbox.id)).limit(5).all()
@@ -97,14 +103,20 @@ def get_conversation_context(db_session, session_id: str) -> List[str]:
     # for chat in chatbox: (get user_prompt and response at every column in the 'chatbox' table - stored in the database)
     #      CONTEXT_PROMPT += f"<|start_header_id|>user<|end_header_id|>\n\n{chat.user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n{chat.response}<|eot_id|>"
     #
+    # if there is a summarized_response in the chatbox, we replace the response by the summarized_response
+    for chat in chatbox:
+        if chat.summarized_response != None:
+            chat.response = chat.summarized_response
+            
     return [f"<|start_header_id|>user<|end_header_id|>\n\n{chat.user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n{chat.response}<|eot_id|>" for chat in reversed(chatbox)]
 
 @app.post("/summarize", response_model=BotSummary)
-async def summarize_text(prompt_request: PromptRequest):
+async def summarize_text(request: SummaryRequest):
     try:
-        summary = summerize_user_prompt(prompt_request.user_prompt)
+        summary = summarize(request.user_prompt, request.mode)
+        print(len(tokenizer.encode(summary, False)))
         return BotSummary(
-            user_input=prompt_request.user_prompt,
+            request=request.user_prompt,
             summary=summary
         )
     
@@ -123,9 +135,9 @@ async def generate_response(prompt_request: PromptRequest):
         # Retrieve previous context (if any in List[str]) for the session
         context = get_conversation_context(db_session, prompt_request.session_id)
         
-        # Summerize the user prompt if it is too long
+        # Summarize the user prompt if it is too long
         if len(tokenizer.encode(f"{USER_PROMPT}", False)) > 64:
-            prompt_request.user_prompt = summerize_user_prompt(prompt_request.user_prompt)
+            prompt_request.user_prompt = summarize(prompt_request.user_prompt, "input")
             NEW_USER_PROMPT = f"<|start_header_id|>user<|end_header_id|>\n\n{prompt_request.user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
             full_prompt = f"{SYSTEM_PROMPT}{context}{NEW_USER_PROMPT}"
         else:
@@ -146,7 +158,7 @@ async def generate_response(prompt_request: PromptRequest):
         # Generate the response using llama.cpp model with appropriate parameters
         Response = llama_model(
             prompt=full_prompt,
-            max_tokens=32,       # The number of tokens to generate in the response, -1 for unlimited
+            max_tokens=-1,       # The number of tokens to generate in the response, -1 for unlimited
             temperature=0.5,      # The temperature for randomness, lower values are more deterministic
             top_p=0.5            # The nucleus sampling probability
         )
@@ -154,23 +166,49 @@ async def generate_response(prompt_request: PromptRequest):
         # Extract the generated response
         bot_answer = Response["choices"][0]["text"].strip()
         
-        # Save the conversation in the database
-        with SessionLocal() as db_session:
-            new_chat = Chatbox(
+        # Summarize the response if it is too long
+        if len(tokenizer.encode(f"{bot_answer}", False)) > 64:
+            summarized_bot_answer = summarize(bot_answer, "output")
+            
+            # Save the conversation in the database
+            with SessionLocal() as db_session:
+                new_chat = Chatbox(
+                    session_id=prompt_request.session_id,
+                    user_prompt=prompt_request.user_prompt,
+                    response=bot_answer,
+                    summarized_response=summarized_bot_answer
+                )
+                db_session.add(new_chat)
+                db_session.commit()
+            
+            # Return the model's response
+            return BotResponse(
                 session_id=prompt_request.session_id,
                 user_prompt=prompt_request.user_prompt,
-                response=bot_answer
+                response=bot_answer,
+                summarized_response=summarized_bot_answer,
+                context=context
             )
-            db_session.add(new_chat)
-            db_session.commit()
-        
-        # Return the model's response
-        return BotResponse(
-            session_id=prompt_request.session_id,
-            user_prompt=prompt_request.user_prompt,
-            response=bot_answer,
-            context=context
-        )
+            
+        else:
+            # Save the conversation in the database
+            with SessionLocal() as db_session:
+                new_chat = Chatbox(
+                    session_id=prompt_request.session_id,
+                    user_prompt=prompt_request.user_prompt,
+                    response=bot_answer,
+                    summarized_response=None
+                )
+                db_session.add(new_chat)
+                db_session.commit()
+            
+            # Return the model's response
+            return BotResponse(
+                session_id=prompt_request.session_id,
+                user_prompt=prompt_request.user_prompt,
+                response=bot_answer,
+                context=context
+            )
     
     except Exception as e:
         # General exception handling for unexpected errors
@@ -189,6 +227,7 @@ def get_conversation_history(session_id: str):
                 session_id=chat.session_id,
                 user_prompt=chat.user_prompt,
                 response=chat.response,
+                summarized_response=chat.summarized_response,
                 context=[]
             )
             for chat in chatbox
@@ -226,5 +265,5 @@ def delete_context(session_id: str):
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     return JSONResponse(
         status_code=422,
-        content={"detail": "Invalid request format. The content must be a JSON object with 2 keys: 'session_id' and 'user_prompt'."},
+        content={"detail": "Invalid request format. Please check the request body."}
     )
