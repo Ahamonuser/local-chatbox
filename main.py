@@ -8,8 +8,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from sqlalchemy import create_engine, Column, Integer, String, Text, desc
 from sqlalchemy.orm import sessionmaker, declarative_base
-from llama_cpp import Llama
-from llama_cpp import LlamaTokenizer
+from llama_cpp import Llama, LlamaTokenizer
 
 # Load environment variables from .env file
 load_dotenv()
@@ -37,7 +36,7 @@ Base.metadata.create_all(bind=engine)
 
 # Initialize llama.cpp model
 chat_model_path = os.getenv("MODEL_PATH")
-llama_model = Llama(model_path=chat_model_path)
+llama_model = Llama(model_path=chat_model_path, n_ctx=1024)
 
 # Initialize the tokenizer
 tokenizer = LlamaTokenizer(llama_model)

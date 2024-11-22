@@ -15,12 +15,12 @@ summarize_model_path = os.getenv("MODEL_PATH")
 MODEL_ROLE_SUM_INPUT = """You are a expert at summarizing. \
 Prohibit to answer the question. \
 If the user input contains a question, summarize the question and return it in the form of a question; do not return a statement or an answer. \
-The response must be a short paragraph, under 50 words. \
+The response must be a short paragraph, under 150 words. \
 """
 
 MODEL_ROLE_SUM_OUTPUT = """You are a expert at summarizing. \
 Do not return the summary in the form of a question; you must return a statement or an answer. \
-The response must be a short paragraph, under 50 words. \
+The response must be a short paragraph, under 150 words. \
 """
 
 # Define system prompts
@@ -35,8 +35,10 @@ def summarize(text_input: str, mode: str) -> str:
     USER_PROMPT = f"""<|start_header_id|>user<|end_header_id|>\n\nSummarizing the following text: {text_input}<|eot_id|><|start_header_id|>assistant<|end_header_id|> \nSummary:\n"""
     llm=LlamaCpp(
         model_path=summarize_model_path,
-        temperature=0.1
+        temperature=0.1,
+        n_ctx = 2048
     )
+    
     # Define summarize prompt
     if mode == "input":
         summarize_prompt = PromptTemplate.from_template(f"{SYSTEM_PROMPT_INPUT}""{input_text}")
