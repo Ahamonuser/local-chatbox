@@ -1,5 +1,6 @@
 import os
 from summarize import summarize
+from validation import validate
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from typing import List, Optional
@@ -102,12 +103,25 @@ async def generate_response(request: Request):
         # Extract the generated response
         bot_answer = Bot_Response["choices"][0]["text"].strip()
         
-        # Summarize the response if it is too long
-        if len(tokenizer.encode(f"{bot_answer}", False)) > 128:
-            summarized_bot_answer = summarize(bot_answer, "output")
-            
-            # Save the conversation in the database
-            with SessionLocal() as db_session:
+        # Check validation of the output
+        validation_result = validate(bot_answer)
+        
+        # If the output is not validated, return a message
+        if "Not Validated" in validation_result:
+            return Response(
+                session_id=request.session_id,
+                request=request.request,
+                response="I'm sorry, but I'm unable to generate a valid response.",
+                context=context
+            )
+        
+        # If the output is validated, begin checking the length of the response
+        elif "Validated" in validation_result:
+            # Summarize the response if it is too long
+            if len(tokenizer.encode(f"{bot_answer}", False)) > 128:
+                summarized_bot_answer = summarize(bot_answer, "output")
+                
+                # Save the conversation in the database
                 new_chat = Chatbox(
                     session_id=request.session_id,
                     request=request.request,
@@ -116,19 +130,19 @@ async def generate_response(request: Request):
                 )
                 db_session.add(new_chat)
                 db_session.commit()
+                
+                # Return the model's response
+                return Response(
+                    session_id=request.session_id,
+                    request=request.request,
+                    response=bot_answer,
+                    summarized_response=summarized_bot_answer,
+                    context=context
+                )
             
-            # Return the model's response
-            return Response(
-                session_id=request.session_id,
-                request=request.request,
-                response=bot_answer,
-                summarized_response=summarized_bot_answer,
-                context=context
-            )
-            
-        else:
-            # Save the conversation in the database
-            with SessionLocal() as db_session:
+            # If the response is not too long
+            else:
+                # Save the conversation in the database
                 new_chat = Chatbox(
                     session_id=request.session_id,
                     request=request.request,
@@ -137,14 +151,14 @@ async def generate_response(request: Request):
                 )
                 db_session.add(new_chat)
                 db_session.commit()
-            
-            # Return the model's response
-            return Response(
-                session_id=request.session_id,
-                request=request.request,
-                response=bot_answer,
-                context=context
-            )
+                
+                # Return the model's response
+                return Response(
+                    session_id=request.session_id,
+                    request=request.request,
+                    response=bot_answer,
+                    context=context
+                )
     
     except Exception as e:
         print(e)
