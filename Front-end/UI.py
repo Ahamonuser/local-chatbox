@@ -1,9 +1,16 @@
-from async_tkinter_loop import async_handler, async_mainloop
-from Idea_generator import generate_response, delete, get_num_history, Request
-from tkinter import *
 import langchain
+import importlib.util
+from async_tkinter_loop import async_handler, async_mainloop
+from tkinter import *
 
 langchain.debug = True
+
+module_path = "/shared/modules.py"
+
+# Load the modules
+spec = importlib.util.spec_from_file_location("modules", module_path)
+modules = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(modules)
 
 # Create the main window
 main_window = Tk()
@@ -17,8 +24,8 @@ input.grid(row=0, column=0)
 # Funtion for button to run the model
 async def generate():
     input_text = input.get()
-    prompt_request = Request(session_id="222", request=input_text)
-    response = await generate_response(prompt_request)
+    prompt_request = modules.Request(session_id="222", request=input_text)
+    response = await modules.generate_response(prompt_request)
     print("Response: ", response.response)
     print("Summary: ", response.summarized_response)
     output.delete(1.0, END)
@@ -32,13 +39,13 @@ async def generate():
 
 # Function to delete a conversation
 def Delete():
-    ans = delete("222")
+    ans = modules.delete("222")
     output.delete(1.0, END)
     output.insert(END, f"Deleted: {ans}")
 
 # Function to get the number of conversations
 def Get_num_conversations():
-    num = get_num_history("222")
+    num = modules.get_num_history("222")
     output.delete(1.0, END)
     output.insert(END, f"Number of conversations: {num}")
 
