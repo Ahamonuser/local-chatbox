@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+sqlalchemy
+pydantic
+python-dotenv
+langchain
+langchain_community
+async_tkinter_loop
+tk
+langfuse
+anthropic
