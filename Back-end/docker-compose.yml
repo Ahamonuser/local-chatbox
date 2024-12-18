@@ -1,0 +1,25 @@
+version: "3.9"
+services:
+  front-end-container:
+    build: ./Front-end
+    volumes:
+      - shared-data:/shared
+    depends_on:
+      - back-end-container
+    networks:
+      - app-network
+
+  back-end-container:
+    build: ./Back-end
+    volumes:
+      - shared-data:/shared
+    networks:
+      - app-network
+
+volumes:
+  shared-data:
+    driver: local
+
+networks:
+  app-network:
+    driver: bridge
