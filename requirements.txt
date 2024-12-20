@@ -1,8 +1,0 @@
-fastapi
-uvicorn
-sqlalchemy
-pydantic
-llama-cpp-python
-python-dotenv
-langchain
-langchain_community

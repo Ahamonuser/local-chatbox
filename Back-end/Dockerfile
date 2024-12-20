@@ -15,7 +15,7 @@ RUN apt-get update && apt-get upgrade -y \
     && mkdir -p /etc/OpenCL/vendors && echo "libnvidia-opencl.so.1" > /etc/OpenCL/vendors/nvidia.icd
 
 # Set the working directory in the container
-WORKDIR /local-chatbox
+WORKDIR /Backend
 
 COPY requirements.txt .
 
@@ -31,7 +31,7 @@ RUN python3 -m pip install --upgrade pip pytest cmake scikit-build setuptools ss
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Install the llama-cpp-python library with CUDA support
-RUN CMAKE_ARGS="-DGGML_CUDA=on" FORCE_CMAKE=1 pip install llama-cpp-python
+RUN CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=80" FORCE_CMAKE=1 pip install llama-cpp-python
 
 # Copy the requirements and install them
 
@@ -50,6 +50,4 @@ RUN pip uninstall -y pytest cmake scikit-build setuptools sse-starlette starlett
 RUN apt remove -y gcc git ocl-icd-opencl-dev opencl-headers clinfo libopenblas-dev
 
 # Command to run the application using Uvicorn
-#CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
-ENTRYPOINT ["tail"]
-CMD ["-f","/dev/null"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

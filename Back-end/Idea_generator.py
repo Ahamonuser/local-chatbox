@@ -7,8 +7,7 @@ from typing import List, Optional
 from sqlalchemy import create_engine, Column, Integer, String, Text, desc
 from sqlalchemy.orm import sessionmaker, declarative_base
 from llama_cpp import Llama, LlamaTokenizer
-from langfuse.decorators import langfuse_context
-from langfuse.decorators import observe
+from langfuse.decorators import langfuse_context, observe
  
 # Load environment variables from .env file
 load_dotenv()
@@ -21,10 +20,8 @@ Host = os.getenv("LANGFUSE_HOST")
 langfuse_context.configure(
     secret_key=Secret_Key,
     public_key=Public_Key,
-    host=Host # 🇪🇺 EU region
-    # host="https://us.cloud.langfuse.com" # 🇺🇸 US region
+    host=Host
 )
-
 
 # SQLite database setup using SQLAlchemy
 DATABASE_URL = "sqlite:///./idea_generator.db"
@@ -113,6 +110,7 @@ async def generate_response(request: Request):
             full_prompt = f"{SYSTEM_PROMPT}{context}{NEW_USER_PROMPT}"
         else:
             full_prompt = f"{SYSTEM_PROMPT}{context}{USER_PROMPT}"
+        
         Bot_Response = llama_model(
             prompt=full_prompt,
             max_tokens=-1,       # The number of tokens to generate in the response, -1 for unlimited
@@ -221,135 +219,3 @@ def delete(session_id: str) -> str:
         print(e)
     finally:
         db_session.close()
-
-module_code= """
-class Request(BaseModel):
-    session_id: str
-    request: str
-
-async def generate_response(request: Request):
-    db_session = SessionLocal()
-    try:
-        # Define user prompt
-        USER_PROMPT = f"<|start_header_id|>user<|end_header_id|>\n\n{request.request}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
-
-        # Retrieve previous context (if any in List[str]) for the session
-        context = get_conversation_context(db_session, request.session_id)
-
-        # Summarize the user prompt if it is too long
-        if len(tokenizer.encode(f"{USER_PROMPT}", False)) > 128:
-            request.request = summarize(request.request, "input")
-            NEW_USER_PROMPT = f"<|start_header_id|>user<|end_header_id|>\n\n{request.request}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
-            full_prompt = f"{SYSTEM_PROMPT}{context}{NEW_USER_PROMPT}"
-        else:
-            full_prompt = f"{SYSTEM_PROMPT}{context}{USER_PROMPT}"
-        Bot_Response = llama_model(
-            prompt=full_prompt,
-            max_tokens=-1,       # The number of tokens to generate in the response, -1 for unlimited
-            temperature=0.5,      # The temperature for randomness, lower values are more deterministic
-            top_p=0.5            # The nucleus sampling probability
-        )
-
-        # Extract the generated response
-        bot_answer = Bot_Response["choices"][0]["text"].strip()
-
-        # Check validation of the output
-        validation_result = validate(bot_answer)
-
-        # If the output is not validated, return a message
-        if "Not Validated" in validation_result:
-            print("Validation Result: ", validation_result)
-            return Response(
-                session_id=request.session_id,
-                request=request.request,
-                response="I'm sorry, but I'm unable to generate a valid response.",
-                context=context
-            )
-
-        # If the output is validated, begin checking the length of the response
-        elif "Validated" in validation_result:
-            print("Validation Result: ", validation_result)
-            # Summarize the response if it is too long
-            if len(tokenizer.encode(f"{bot_answer}", False)) > 128:
-                summarized_bot_answer = summarize(bot_answer, "output")
-    
-                # Save the conversation in the database
-                new_chat = Chatbox(
-                    session_id=request.session_id,
-                    request=request.request,
-                    response=bot_answer,
-                    summarized_response=summarized_bot_answer
-                )
-                db_session.add(new_chat)
-                db_session.commit()
-    
-                # Return the model's response
-                return Response(
-                    session_id=request.session_id,
-                    request=request.request,
-                    response=bot_answer,
-                    summarized_response=summarized_bot_answer,
-                    context=context
-                )
-
-            # If the response is not too long
-            else:
-                # Save the conversation in the database
-                new_chat = Chatbox(
-                    session_id=request.session_id,
-                    request=request.request,
-                    response=bot_answer,
-                    summarized_response=None
-                )
-                db_session.add(new_chat)
-                db_session.commit()
-    
-                # Return the model's response
-                return Response(
-                    session_id=request.session_id,
-                    request=request.request,
-                    response=bot_answer,
-                    context=context
-                )
-
-    except Exception as e:
-        print(e)
-    finally:
-        db_session.close()
-        
-def get_num_history(session_id: str) -> int:
-    db_session = SessionLocal()
-    try:
-        chatbox = db_session.query(Chatbox).filter(Chatbox.session_id == session_id).all()
-        return len(chatbox)
-
-    except Exception as e:
-        print(e)
-    finally:
-        db_session.close()
-        
-def delete(session_id: str) -> str:
-    db_session = SessionLocal()
-    try:
-        # Delete all conversations associated with the given session id
-        deleted_rows = db_session.query(Chatbox).filter(Chatbox.session_id == session_id).delete()
-        
-        # Commit the transaction to make the change persistent
-        db_session.commit()
-        
-        if deleted_rows == 0:
-            return "No conversations found for the given session_id"
-        else:
-            return {"message": f"Deleted {deleted_rows} conversation(s) for session_id: {session_id}"}
-
-    except Exception as e:
-        db_session.rollback()
-        print(e)
-    finally:
-        db_session.close()
-
-            """
-
-# Write the module code to a file
-with open("/shared/modules.py", "w") as f:
-    f.write(module_code)

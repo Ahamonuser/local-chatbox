@@ -28,9 +28,10 @@ langfuse_handler = CallbackHandler(
 MODEL_ROLE = """You are a expert at validating technical answers and solutions related to IoT DIY projects. \
 Make sure user iput is technically accurate, feasible, and align with best practices for IoT development \
 If the input has any keywords that is not related to IoT, return 'Not Validated'. \
-If the user input related to IoT DIY projects, return only 'Validated'. If not, return only 'Not Validated' \
+If the user input related to IoT DIY projects, return only in format 'Validated'. If not, return only in format 'Not Validated' \
 Return only in 'Validated' or 'Not Validated' format, no further explanation. \
 Do not return a statement or a question. \
+Do not return any other information than 'Validated' or 'Not Validated'. \
 """
 
 # Define system prompts
@@ -51,5 +52,5 @@ def validate(text_input: str) -> str:
     # Define validate prompt
     validate_prompt = PromptTemplate.from_template(f"{SYSTEM_PROMPT}""{input_text}")
     chain = validate_prompt | llm
-    result = chain.invoke(input={"input_text": USER_PROMPT})
+    result = chain.invoke(input={"input_text": USER_PROMPT}, config={"callbacks": [langfuse_handler]})
     return result
