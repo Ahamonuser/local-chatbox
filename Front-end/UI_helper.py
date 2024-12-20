@@ -20,8 +20,12 @@ def get_response(input):
 
 def get_num_conversations(input):
     url_get_num_conversations = 'http://backend:8000/history/' + input['session_id']
-    response = requests.get(url_get_num_conversations).text
-    return response
+    API_response = requests.get(url_get_num_conversations)
+    if API_response.status_code != 200:
+        return "Error: " + str(API_response.status_code)
+    else:
+        API_response_data = API_response.json()
+        return API_response_data['num_conversations']
 
 def delete_history(input):
     url_delete = 'http://backend:8000/delete-history/' + input['session_id']

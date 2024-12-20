@@ -45,7 +45,8 @@ services:
     ports:
       - 5432:5432
     volumes:
-      - database_data:/var/lib/postgresql/data
+      - local-chatbox_database_data:/var/lib/postgresql/data
+
 
   back-end-container:
     container_name: backend
@@ -79,8 +80,8 @@ services:
       - back-end-container
 
 volumes:
-  database_data:
-    driver: local
+  local-chatbox_database_data:
+    external: true
 
 networks:
   netbot:

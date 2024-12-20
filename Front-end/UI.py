@@ -31,6 +31,7 @@ if prompt := st.chat_input("What is up?"):
         response = get_num_conversations({"session_id": "222"})
         with st.chat_message("assistant"):
             st.markdown(f"Number of conversations: {response}")
+        st.session_state.messages.append({"role": "assistant", "content": response})
             
     else:
         response = get_response(prompt)

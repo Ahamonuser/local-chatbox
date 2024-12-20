@@ -55,7 +55,7 @@ chat_model_path = os.getenv("MODEL_PATH")
 
 
 llama_model = Llama(model_path=chat_model_path,
-                    n_ctx=1024,
+                    n_ctx=2048,
                     n_batch=512,
                     n_gpu_layers=-1,)
 
@@ -96,6 +96,8 @@ class SummaryRequest(BaseModel):
     mode: str
     request: str
 
+class NumHisCon(BaseModel):
+    num_conversations: int
 
 # Helper function to retrieve context from the database
 def get_conversation_context(db_session, session_id: str) -> List[str]:
@@ -212,12 +214,18 @@ async def generate_response(request: Request):
         validation_result = validate(bot_answer)
         
         # If the output is not validated, return a message
-        if "Not Validated" in validation_result:
+        if ("Not Validated" in validation_result) and ("Validated" not in validation_result):
             print("Validation Result: ", validation_result)
-            return "I'm sorry, but I'm unable to generate a valid response."
+            return Response(
+                session_id=request.session_id,
+                request=request.request,
+                response="I'm sorry, but I'm unable to generate a valid response.",
+                summarized_response=None,
+                context=context
+            )
         
         # If the output is validated, begin checking the length of the response
-        elif "Validated" in validation_result:
+        else :
             print("Validation Result: ", validation_result)
             # Summarize the response if it is too long
             if len(tokenizer.encode(f"{bot_answer}", False)) > 256:
@@ -272,15 +280,14 @@ async def generate_response(request: Request):
 
 @observe()
 # GET method to retrieve conversation history
-@app.get("/history/{session_id}", response_model=List[Response])
+@app.get("/history/{session_id}", response_model= NumHisCon)
 def get_conversation_history(session_id: str):
     db_session = SessionLocal()
     try:
         chatbox = db_session.query(Chatbox).filter(Chatbox.session_id == session_id).all()
-        return len(chatbox)
-        
-        
-    
+        return NumHisCon(
+            num_conversations=len(chatbox)
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
