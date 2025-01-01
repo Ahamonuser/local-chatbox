@@ -3,6 +3,7 @@ FROM python:3.11.9
 # We need to set the host to 0.0.0.0 to allow outside access
 ENV HOST 0.0.0.0
 
+# Outputs are sent straight to container log without being first buffered and that you can see the output of your application in real time.
 ENV PYTHONUNBUFFERED=1
 
 # Set the working directory in the container

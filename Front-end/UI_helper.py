@@ -13,7 +13,7 @@ def get_response(input):
         print(API_response_data)
         response = API_response_data['response']
         summary = API_response_data['summarized_response']
-        if summary == "None":
+        if summary == None:
             return response
         else:
             return summary
