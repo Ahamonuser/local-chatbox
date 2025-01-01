@@ -95,26 +95,7 @@ Kết quả được trả về theo kiểu `JSON`:
 
 ![DELETE-None](./README-assets/DELETE%20-%20None.png)
 
-## III. Multilingual
-
-Model sẽ tự động nhận diện ngôn ngữ sử dụng trong user_prompt nên người dùng đơn giản chỉ cần giao tiếp bằng ngôn ngữ mong muốn là được.
-- Tiếng Anh:
-
-![Lang-ENG](./README-assets/Lang-ENG.png)
-
-- Tiếng Việt:
-
-![Lang-VIE](./README-assets/Lang-VIE.png)
-
-- Tiếng Đức:
-
-![Lang-GER](./README-assets/Lang-GER.png)
-
-Ngoài ra có thể phiên dịch sang ngôn ngữ khác bằng cách chỉ định ngôn ngữ đầu ra:
-
-![Translate](./README-assets/Translate.png)
-
-## IV. Docker
+## III. Docker
 
 - Tạo file Dockerfile đặt cùng với folder project.
 - Mở terminal lên, di chuyển tới folder project và chạy lệnh sau để build image:
@@ -133,7 +114,7 @@ Ngoài ra có thể phiên dịch sang ngôn ngữ khác bằng cách chỉ đ�
 
 ![Docker-Run-Suc](./README-assets/Docker-Run-Success.png)
 
-## V. Push image lên Dockerhub
+## IV. Push image lên Dockerhub
 
 - Tạo 1 repo mới trên Dockerhub
 
@@ -158,7 +139,7 @@ Ngoài ra có thể phiên dịch sang ngôn ngữ khác bằng cách chỉ đ�
 
 ![Dockerhub-Push-Suc](./README-assets/Dockerhub-Push-Success.png)
 
-## VI. Flowchart
+## V. Flowchart
 
 <div style="text-align:center"><img src="./README-assets/flowchart.png"/></div>
 
